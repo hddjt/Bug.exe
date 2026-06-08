@@ -1,9 +1,24 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { usePlayerStore } from '@/stores/player'
+import { useEquipmentStore } from '@/stores/equipment'
 
 const player = usePlayerStore()
+const equip = useEquipmentStore()
 const showStats = ref(false)
+
+const equipBonuses = computed(() => {
+  const bonuses = {}
+  for (const itemId of Object.values(equip.equipped)) {
+    const item = equip.shopItems.find(i => i.id === itemId)
+    if (item) {
+      for (const [stat, val] of Object.entries(item.effects)) {
+        bonuses[stat] = (bonuses[stat] || 0) + val
+      }
+    }
+  }
+  return bonuses
+})
 </script>
 
 <template>
@@ -14,6 +29,13 @@ const showStats = ref(false)
       <div class="text-xs text-slate-400">
         Lv.{{ player.level }}
         <span class="text-emerald-400">¥{{ player.money.toLocaleString() }}</span>
+      </div>
+      <div class="text-xs mt-1" :class="{
+        'text-emerald-400': player.dailyLuck >= 3,
+        'text-amber-400': player.dailyLuck === 2,
+        'text-slate-400': player.dailyLuck < 2,
+      }">
+        🎲 今日 {{ player.dailyLuckLabel }}
       </div>
     </div>
 
@@ -77,8 +99,20 @@ const showStats = ref(false)
         </div>
       </div>
 
+      <div v-if="Object.keys(equipBonuses).length > 0" class="pt-1 text-[10px] text-emerald-500/80">
+        <span>装备加成: </span>
+        <span v-for="(val, stat) in equipBonuses" :key="stat" class="mr-1">{{ stat }}+{{ val }}</span>
+      </div>
+
       <div class="pt-2 border-t border-slate-700 text-center">
-        <span class="text-xs text-slate-500">薪资: ¥{{ player.salary.toLocaleString() }}/月</span>
+        <div v-if="player.nextPosition" class="text-xs text-slate-500">
+          <span>下一职位: {{ player.nextPosition.name }} (Lv.{{ player.nextPosition.level }})</span>
+          <div class="h-1 bg-slate-700 rounded overflow-hidden mt-1">
+            <div class="h-full bg-amber-500 rounded transition-all" :style="{ width: Math.min(player.level / player.nextPosition.level * 100, 100) + '%' }"></div>
+          </div>
+        </div>
+        <div v-else class="text-xs text-emerald-500">已达最终职位 🏆</div>
+        <div class="text-xs text-slate-500 mt-1">薪资: ¥{{ player.salary.toLocaleString() }}/月</div>
       </div>
 
       <button

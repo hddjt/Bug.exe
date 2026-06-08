@@ -49,6 +49,7 @@ onMounted(() => {
   player.load()
   skill.load()
   equip.load()
+  player.refreshDailyLuck()
 
   tickTimer = setInterval(onTick, 1000)
   eventTimer = setInterval(tryTriggerEvent, 10000)

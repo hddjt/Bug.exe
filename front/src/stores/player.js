@@ -39,6 +39,8 @@ export const usePlayerStore = defineStore('player', () => {
   const mode = ref('work')
   const skillPoints = ref(0)
 
+  const combo = ref(0)
+  const sprintProgress = ref(0)
   const totalBugsFixed = ref(0)
   const totalMoneyEarned = ref(0)
   const totalEvents = ref(0)
@@ -47,6 +49,31 @@ export const usePlayerStore = defineStore('player', () => {
   const totalOvertime = ref(0)
   const promotions = ref(0)
   const skillsLearned = ref(0)
+  const dailyLuck = ref(0)
+  const dailyLuckDate = ref('')
+
+  function refreshDailyLuck() {
+    const today = new Date().toDateString()
+    if (dailyLuckDate.value !== today) {
+      dailyLuckDate.value = today
+      dailyLuck.value = Math.floor(Math.random() * 5)
+    }
+  }
+
+  const dailyLuckLabel = computed(() => {
+    const labels = ['大凶 ☠️', '小凶 🌧️', '小吉 🌤️', '中吉 ☀️', '大吉 🍀']
+    return labels[dailyLuck.value] ?? '小吉 🌤️'
+  })
+
+  const dailyLuckMultiplier = computed(() => {
+    return 0.8 + dailyLuck.value * 0.1
+  })
+
+  const nextPosition = computed(() => {
+    const next = positionIndex.value + 1
+    if (next < POSITIONS.length) return POSITIONS[next]
+    return null
+  })
 
   const position = computed(() => POSITIONS[positionIndex.value]?.name ?? '实习生')
   const salary = computed(() => POSITIONS[positionIndex.value]?.salary ?? 3000)
@@ -97,6 +124,28 @@ export const usePlayerStore = defineStore('player', () => {
       coding.value += 0.01
       totalStudyTech.value += 0.03
       san.value = Math.min(100, san.value + 0.1)
+    } else if (mode.value === 'overtime') {
+      const gain = (1 + coding.value / 5) * 2
+      addExp(gain)
+      const earned = Math.floor(salary.value / 5000) + 2
+      addMoney(earned)
+      happiness.value = Math.max(0, happiness.value - 0.5)
+      san.value = Math.max(0, san.value - 0.3)
+      energy.value = Math.max(0, energy.value - 0.2)
+      totalOvertime.value += 1
+    } else if (mode.value === 'meeting') {
+      colleagueRelation.value = Math.min(100, colleagueRelation.value + 0.05)
+      bossRelation.value = Math.min(100, bossRelation.value + 0.03)
+      addExp(0.5)
+      san.value = Math.max(0, san.value - 0.1)
+      happiness.value = Math.max(0, happiness.value - 0.1)
+    } else if (mode.value === 'paid-slack') {
+      happiness.value = Math.min(100, happiness.value + 1.0)
+      bossRelation.value = Math.max(0, bossRelation.value - 0.1)
+    }
+
+    if (combo.value > 0) {
+      combo.value = Math.max(0, combo.value - 1)
     }
 
     const curHappiness = happiness.value
@@ -143,6 +192,8 @@ export const usePlayerStore = defineStore('player', () => {
       totalEvents: totalEvents.value, totalSlackHappiness: totalSlackHappiness.value,
       totalStudyTech: totalStudyTech.value, totalOvertime: totalOvertime.value,
       promotions: promotions.value, skillsLearned: skillsLearned.value,
+      combo: combo.value, sprintProgress: sprintProgress.value,
+      dailyLuck: dailyLuck.value, dailyLuckDate: dailyLuckDate.value,
     }
     localStorage.setItem(SAVE_KEY, JSON.stringify(data))
   }
@@ -181,6 +232,11 @@ export const usePlayerStore = defineStore('player', () => {
       totalOvertime.value = data.totalOvertime ?? 0
       promotions.value = data.promotions ?? 0
       skillsLearned.value = data.skillsLearned ?? 0
+      combo.value = data.combo ?? 0
+      sprintProgress.value = data.sprintProgress ?? 0
+      dailyLuck.value = data.dailyLuck ?? 0
+      dailyLuckDate.value = data.dailyLuckDate ?? ''
+      refreshDailyLuck()
       return true
     } catch {
       return false
@@ -217,6 +273,10 @@ export const usePlayerStore = defineStore('player', () => {
     totalOvertime.value = 0
     promotions.value = 0
     skillsLearned.value = 0
+    combo.value = 0
+    sprintProgress.value = 0
+    dailyLuck.value = 0
+    dailyLuckDate.value = ''
     localStorage.removeItem(SAVE_KEY)
   }
 
@@ -226,6 +286,9 @@ export const usePlayerStore = defineStore('player', () => {
     tech, coding, debug, architecture, learning,
     colleagueRelation, bossRelation, productRelation, luck,
     positionIndex, mode, skillPoints,
+    combo, sprintProgress,
+    dailyLuck, dailyLuckDate, dailyLuckLabel, dailyLuckMultiplier, refreshDailyLuck,
+    nextPosition,
     totalBugsFixed, totalMoneyEarned, totalEvents,
     totalSlackHappiness, totalStudyTech, totalOvertime,
     promotions, skillsLearned,
