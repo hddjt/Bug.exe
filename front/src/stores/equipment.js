@@ -83,6 +83,24 @@ export const useEquipmentStore = defineStore('equipment', () => {
     return true
   }
 
+  function sellItem(itemId, quantity = 1) {
+    const inv = inventory.value.find(i => i.id === itemId)
+    if (!inv || inv.quantity < quantity) return false
+    const item = shopItems.value.find(i => i.id === itemId)
+    if (!item) return false
+    const player = usePlayerStore()
+    if (equipped.value[item.category] === itemId) {
+      unequipItem(itemId)
+    }
+    const price = Math.floor(item.price * 0.5 * quantity)
+    player.money += price
+    inv.quantity -= quantity
+    if (inv.quantity <= 0) {
+      inventory.value = inventory.value.filter(i => i.id !== itemId)
+    }
+    return price
+  }
+
   function getEquipped() {
     const result = {}
     for (const [category, itemId] of Object.entries(equipped.value)) {
@@ -159,7 +177,7 @@ export const useEquipmentStore = defineStore('equipment', () => {
   return {
     inventory, equipped, shopItems, categories,
     getShopItemsByCategory, buyItem, useConsumable, getItemInfo,
-    isEquippable, equipItem, unequipItem, getEquipped,
+    isEquippable, equipItem, unequipItem, sellItem, getEquipped,
     save, load, reset,
   }
 })

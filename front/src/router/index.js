@@ -28,6 +28,16 @@ const router = createRouter({
       name: 'achievements',
       component: () => import('@/views/AchievementsPage.vue'),
     },
+    {
+      path: '/settings',
+      name: 'settings',
+      component: () => import('@/views/SettingsPage.vue'),
+    },
+    {
+      path: '/analytics',
+      name: 'analytics',
+      component: () => import('@/views/AnalyticsPage.vue'),
+    },
   ],
 })
 

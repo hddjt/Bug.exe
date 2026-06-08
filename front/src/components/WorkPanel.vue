@@ -132,6 +132,9 @@ function doWork() {
   log.addLog(`完成一次工作任务，经验+${Math.floor(expGain)}`, 'work')
   window.__dailyTasks?.trackAction('work')
   window.__dailyTasks?.trackEarn(moneyGain)
+  window.__challengeTrack?.('work')
+  window.__challengeTrack?.('money', moneyGain)
+  window.__challengeTrack?.('combo', player.combo)
   checkAchievements()
 }
 
@@ -149,6 +152,9 @@ function fixBug() {
     sessionBugs.value++
     player.combo++
     advanceSprint(2)
+    window.__challengeTrack?.('bug')
+    window.__challengeTrack?.('money', moneyGain)
+    window.__challengeTrack?.('combo', player.combo)
     addFloater(`+${Math.floor(expGain)} EXP`, 'text-blue-400')
     addFloater(`+¥${moneyGain}`, 'text-amber-400')
     if (mult > 1) addFloater(`🔥 x${mult}`, 'text-red-400')
@@ -165,10 +171,12 @@ function fixBug() {
 onMounted(() => {
   updateDialogue()
   dialogueTimer = setInterval(updateDialogue, 8000)
+  window.__workPanel = { doWork, fixBug }
 })
 
 onUnmounted(() => {
   if (dialogueTimer) clearInterval(dialogueTimer)
+  delete window.__workPanel
 })
 </script>
 

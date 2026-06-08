@@ -23,6 +23,20 @@ function buy(itemId) {
     log.addLog(`购买 ${item.name} 失败，余额不足`, 'error')
   }
 }
+
+function sell(itemId) {
+  const item = equip.shopItems.find(i => i.id === itemId)
+  if (!item || item.price === 0) return
+  const price = equip.sellItem(itemId)
+  if (price) {
+    log.addLog(`出售了 ${item.name}，获得 ¥${price}`, 'info')
+  }
+}
+
+function ownedQty(itemId) {
+  const inv = equip.inventory.find(i => i.id === itemId)
+  return inv ? inv.quantity : 0
+}
 </script>
 
 <template>
@@ -50,22 +64,24 @@ function buy(itemId) {
               <span v-if="Object.keys(item.effects).length === 0" class="text-slate-500">无属性加成</span>
             </div>
             <div class="text-xs text-amber-400 mt-1">¥{{ item.price.toLocaleString() }}</div>
-            <button
-              v-if="item.category === 'consumable'"
-              @click="buy(item.id)"
-              :disabled="player.money < item.price"
-              class="mt-2 py-1 px-3 bg-amber-600 hover:bg-amber-500 disabled:bg-slate-600 disabled:text-slate-400 text-white text-xs rounded cursor-pointer disabled:cursor-not-allowed"
-            >
-              购买
-            </button>
-            <button
-              v-else
-              @click="buy(item.id)"
-              :disabled="player.money < item.price || item.price === 0"
-              class="mt-2 py-1 px-3 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-600 disabled:text-slate-400 text-white text-xs rounded cursor-pointer disabled:cursor-not-allowed"
-            >
-              {{ item.price === 0 ? '已拥有' : '购买' }}
-            </button>
+            <div v-if="ownedQty(item.id) > 0" class="text-xs text-slate-500 mt-1">持有: {{ ownedQty(item.id) }}</div>
+            <div class="flex gap-1 mt-2">
+              <button
+                @click="buy(item.id)"
+                :disabled="player.money < item.price || item.price === 0"
+                class="flex-1 py-1 px-2 text-xs rounded cursor-pointer transition disabled:cursor-not-allowed"
+                :class="item.price === 0 ? 'bg-slate-600 text-slate-400' : 'bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-600 disabled:text-slate-400 text-white'"
+              >
+                {{ item.price === 0 ? '已拥有' : '购买' }}
+              </button>
+              <button
+                v-if="ownedQty(item.id) > 0 && item.price > 0"
+                @click="sell(item.id)"
+                class="py-1 px-2 bg-red-700 hover:bg-red-600 text-white text-xs rounded cursor-pointer transition"
+              >
+                回收 ¥{{ Math.floor(item.price * 0.5) }}
+              </button>
+            </div>
           </div>
         </div>
       </div>
