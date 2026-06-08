@@ -1,6 +1,7 @@
 import { ref, computed } from 'vue'
 import { defineStore } from 'pinia'
 import { usePlayerStore } from './player'
+import { saveWithVersion, loadWithVersion, removeStorage } from './helpers'
 
 const NPC_DATA = [
   { id: 'pm', name: '张产品', role: '产品经理', emoji: '👨‍💼', dialogues: ['这个需求改一下', '用户想要这个功能', '很简单的，半天能搞定吧', '我不管你怎么实现', '竞品都有这个功能'] },
@@ -9,28 +10,32 @@ const NPC_DATA = [
   { id: 'designer', name: '赵设计', role: '设计师', emoji: '👩‍🎨', dialogues: ['这个间距不对', '配色要改一下', '我出了三版方案', '用这个字体', '参考了这个大厂的设计'] },
 ]
 
+const CHAT_COOLDOWN_MS = 5000
+
 export const useNpcStore = defineStore('npc', () => {
   const npcs = ref(NPC_DATA.map(n => ({ ...n, relation: 50, dialogue: n.dialogues[0] })))
-  const lastChatTime = ref(null)
-  const chatCooldown = ref(false)
+  const lastChatTime = ref(0)
 
-  const avgRelation = computed(() => Math.floor(npcs.value.reduce((s, n) => s + n.relation, 0) / npcs.value.length))
+  const chatCooldown = computed(() => Date.now() - lastChatTime.value < CHAT_COOLDOWN_MS)
+
+  const avgRelation = computed(() => {
+    const arr = npcs.value
+    return arr.length > 0 ? Math.floor(arr.reduce((s, n) => s + n.relation, 0) / arr.length) : 0
+  })
 
   function getNpc(id) {
     return npcs.value.find(n => n.id === id)
   }
 
   function chat(id) {
-    if (chatCooldown.value) return false
+    if (chatCooldown.value) return ''
     const npc = npcs.value.find(n => n.id === id)
-    if (!npc) return false
+    if (!npc) return ''
     const player = usePlayerStore()
     const idx = Math.floor(Math.random() * npc.dialogues.length)
     npc.dialogue = npc.dialogues[idx]
     npc.relation = Math.min(100, npc.relation + 1)
     player.colleagueRelation = Math.min(100, player.colleagueRelation + 1)
-    chatCooldown.value = true
-    setTimeout(() => { chatCooldown.value = false }, 5000)
     lastChatTime.value = Date.now()
     return npc.dialogue
   }
@@ -43,25 +48,28 @@ export const useNpcStore = defineStore('npc', () => {
   const SAVE_KEY = 'bug-exe-npcs'
 
   function save() {
-    const data = npcs.value.map(n => ({ id: n.id, relation: n.relation }))
-    localStorage.setItem(SAVE_KEY, JSON.stringify(data))
+    return saveWithVersion(SAVE_KEY, {
+      npcs: npcs.value.map(n => ({ id: n.id, relation: n.relation })),
+      lastChatTime: lastChatTime.value,
+    })
   }
 
   function load() {
-    const raw = localStorage.getItem(SAVE_KEY)
-    if (!raw) return
-    try {
-      const data = JSON.parse(raw)
-      for (const saved of data) {
+    const data = loadWithVersion(SAVE_KEY)
+    if (!data) return
+    if (data.npcs) {
+      for (const saved of data.npcs) {
         const npc = npcs.value.find(n => n.id === saved.id)
         if (npc) npc.relation = saved.relation
       }
-    } catch { /* ignore */ }
+    }
+    lastChatTime.value = data.lastChatTime ?? 0
   }
 
   function reset() {
     npcs.value.forEach(n => (n.relation = 50))
-    localStorage.removeItem(SAVE_KEY)
+    lastChatTime.value = 0
+    removeStorage(SAVE_KEY)
   }
 
   return { npcs, avgRelation, chatCooldown, getNpc, chat, adjustRelation, save, load, reset }

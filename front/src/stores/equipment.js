@@ -1,8 +1,10 @@
 import { ref, computed } from 'vue'
 import { defineStore } from 'pinia'
 import { usePlayerStore } from './player'
+import { saveWithVersion, loadWithVersion, removeStorage } from './helpers'
 
 const EQUIPPABLE_CATEGORIES = ['computer', 'peripheral', 'ai']
+const SELL_RATIO = 0.5
 
 const CATEGORY_LABELS = {
   computer: '电脑设备',
@@ -40,41 +42,54 @@ const SHOP_ITEMS = [
   { id: 'claude', name: 'Claude', category: 'ai', price: 14000, effects: { coding: 5, learning: 3 } },
 ]
 
+const shopMap = new Map(SHOP_ITEMS.map(i => [i.id, i]))
+
 export const useEquipmentStore = defineStore('equipment', () => {
   const inventory = ref([])
   const equipped = ref({})
 
   const shopItems = ref(SHOP_ITEMS)
-
   const categories = computed(() => CATEGORY_LABELS)
 
+  function _getItem(itemId) {
+    return shopMap.get(itemId) ?? shopItems.value.find(i => i.id === itemId)
+  }
+
+  function _removeOne(itemId) {
+    const idx = inventory.value.findIndex(i => i.id === itemId)
+    if (idx === -1) return false
+    inventory.value[idx].quantity--
+    if (inventory.value[idx].quantity <= 0) {
+      inventory.value.splice(idx, 1)
+    }
+    return true
+  }
+
   function isEquippable(itemId) {
-    const item = shopItems.value.find(i => i.id === itemId)
+    const item = _getItem(itemId)
     return item && EQUIPPABLE_CATEGORIES.includes(item.category)
   }
 
   function equipItem(itemId) {
     const inv = inventory.value.find(i => i.id === itemId)
     if (!inv) return false
-    const item = shopItems.value.find(i => i.id === itemId)
+    const item = _getItem(itemId)
     if (!item || !EQUIPPABLE_CATEGORIES.includes(item.category)) return false
     const player = usePlayerStore()
     const current = equipped.value[item.category]
-    if (current) {
-      unequipItem(current)
-    }
+    if (current) unequipItem(current)
     equipped.value[item.category] = itemId
     player.useItem(item.effects)
     return true
   }
 
   function unequipItem(itemId) {
-    const item = shopItems.value.find(i => i.id === itemId)
+    const item = _getItem(itemId)
     if (!item) return false
     const player = usePlayerStore()
     for (const [stat, val] of Object.entries(item.effects)) {
-      if (player[stat] !== undefined) {
-        player[stat] = Math.max(0, player[stat] - val)
+      if (player[stat] !== undefined && typeof player[stat].value === 'number') {
+        player[stat].value = Math.max(0, player[stat].value - val)
       }
     }
     if (equipped.value[item.category] === itemId) {
@@ -85,15 +100,15 @@ export const useEquipmentStore = defineStore('equipment', () => {
 
   function sellItem(itemId, quantity = 1) {
     const inv = inventory.value.find(i => i.id === itemId)
-    if (!inv || inv.quantity < quantity) return false
-    const item = shopItems.value.find(i => i.id === itemId)
-    if (!item) return false
+    if (!inv || inv.quantity < quantity) return 0
+    const item = _getItem(itemId)
+    if (!item || item.price === 0) return 0
     const player = usePlayerStore()
     if (equipped.value[item.category] === itemId) {
       unequipItem(itemId)
     }
-    const price = Math.floor(item.price * 0.5 * quantity)
-    player.money += price
+    const price = Math.floor(item.price * SELL_RATIO * quantity)
+    player.addMoney(price)
     inv.quantity -= quantity
     if (inv.quantity <= 0) {
       inventory.value = inventory.value.filter(i => i.id !== itemId)
@@ -104,7 +119,7 @@ export const useEquipmentStore = defineStore('equipment', () => {
   function getEquipped() {
     const result = {}
     for (const [category, itemId] of Object.entries(equipped.value)) {
-      result[category] = shopItems.value.find(i => i.id === itemId)
+      result[category] = _getItem(itemId)
     }
     return result
   }
@@ -114,7 +129,7 @@ export const useEquipmentStore = defineStore('equipment', () => {
   }
 
   function buyItem(itemId) {
-    const item = shopItems.value.find(i => i.id === itemId)
+    const item = _getItem(itemId)
     if (!item) return false
     const player = usePlayerStore()
     if (player.money < item.price) return false
@@ -131,19 +146,14 @@ export const useEquipmentStore = defineStore('equipment', () => {
   function useConsumable(itemId) {
     const inv = inventory.value.find(i => i.id === itemId)
     if (!inv) return false
-    const item = shopItems.value.find(i => i.id === itemId)
+    const item = _getItem(itemId)
     if (!item || item.category !== 'consumable') return false
-    const player = usePlayerStore()
-    player.useItem(item.effects)
-    inv.quantity--
-    if (inv.quantity <= 0) {
-      inventory.value = inventory.value.filter(i => i.id !== itemId)
-    }
-    return true
+    usePlayerStore().useItem(item.effects)
+    return _removeOne(itemId)
   }
 
   function getItemInfo(itemId) {
-    const item = shopItems.value.find(i => i.id === itemId)
+    const item = _getItem(itemId)
     const inv = inventory.value.find(i => i.id === itemId)
     return { ...item, quantity: inv?.quantity ?? 0 }
   }
@@ -151,27 +161,20 @@ export const useEquipmentStore = defineStore('equipment', () => {
   const SAVE_KEY = 'bug-exe-equipment'
 
   function save() {
-    const data = {
-      inventory: inventory.value,
-      equipped: equipped.value,
-    }
-    localStorage.setItem(SAVE_KEY, JSON.stringify(data))
+    return saveWithVersion(SAVE_KEY, { inventory: inventory.value, equipped: equipped.value })
   }
 
   function load() {
-    const raw = localStorage.getItem(SAVE_KEY)
-    if (!raw) return
-    try {
-      const data = JSON.parse(raw)
-      inventory.value = data.inventory ?? []
-      equipped.value = data.equipped ?? {}
-    } catch { /* ignore */ }
+    const data = loadWithVersion(SAVE_KEY)
+    if (!data) return
+    inventory.value = data.inventory ?? []
+    equipped.value = data.equipped ?? {}
   }
 
   function reset() {
     inventory.value = []
     equipped.value = {}
-    localStorage.removeItem(SAVE_KEY)
+    removeStorage(SAVE_KEY)
   }
 
   return {

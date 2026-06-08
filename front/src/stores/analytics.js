@@ -1,6 +1,7 @@
 import { ref, computed } from 'vue'
 import { defineStore } from 'pinia'
 import { usePlayerStore } from './player'
+import { saveWithVersion, loadWithVersion, removeStorage } from './helpers'
 
 export const useAnalyticsStore = defineStore('analytics', () => {
   const history = ref([])
@@ -31,8 +32,10 @@ export const useAnalyticsStore = defineStore('analytics', () => {
 
   function generateWeeklyReport() {
     const player = usePlayerStore()
-    const weekDays = ['一', '二', '三', '四', '五', '六', '日']
-    const day = weekDays[new Date().getDay() || 0]
+    const dayIndex = new Date().getDay()
+    const weekDays = ['日', '一', '二', '三', '四', '五', '六']
+    const day = weekDays[dayIndex]
+    const mix = (player.totalBugsFixed * 7 + player.totalOvertime * 13 + player.promotions * 3) % 5
     return {
       title: `第 ${Math.floor(player.totalEvents / 5 + 1)} 周工作周报`,
       employee: player.name,
@@ -50,7 +53,7 @@ export const useAnalyticsStore = defineStore('analytics', () => {
         '代码质量有待提升，建议多用 AI',
         '加班太多，建议提高效率',
         '本月 Bug 产出比代码还多，建议转行测试',
-      ][player.totalBugsFixed % 5],
+      ][mix],
       day,
     }
   }
@@ -58,25 +61,20 @@ export const useAnalyticsStore = defineStore('analytics', () => {
   const SAVE_KEY = 'bug-exe-analytics'
 
   function save() {
-    localStorage.setItem(SAVE_KEY, JSON.stringify({
-      history: history.value, lastSnapshot: lastSnapshot.value,
-    }))
+    return saveWithVersion(SAVE_KEY, { history: history.value, lastSnapshot: lastSnapshot.value })
   }
 
   function load() {
-    const raw = localStorage.getItem(SAVE_KEY)
-    if (!raw) return
-    try {
-      const data = JSON.parse(raw)
-      history.value = data.history ?? []
-      lastSnapshot.value = data.lastSnapshot ?? 0
-    } catch { /* ignore */ }
+    const data = loadWithVersion(SAVE_KEY)
+    if (!data) return
+    history.value = data.history ?? []
+    lastSnapshot.value = data.lastSnapshot ?? 0
   }
 
   function reset() {
     history.value = []
     lastSnapshot.value = 0
-    localStorage.removeItem(SAVE_KEY)
+    removeStorage(SAVE_KEY)
   }
 
   return { history, levelHistory, moneyHistory, snapshot, generateWeeklyReport, save, load, reset }

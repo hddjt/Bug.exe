@@ -183,13 +183,34 @@ const EVENT_POOL = [
   },
 ]
 
+function deepCloneEvent(evt) {
+  return {
+    ...evt,
+    options: evt.options.map(o => ({ ...o, effects: { ...o.effects } })),
+  }
+}
+
 export const useEventStore = defineStore('event', () => {
   const currentEvent = ref(null)
   const pool = ref(EVENT_POOL)
+  const lastEventIds = ref([])
+  const MAX_HISTORY = 3
 
   function triggerRandom() {
-    const idx = Math.floor(Math.random() * pool.value.length)
-    currentEvent.value = { ...pool.value[idx] }
+    let available = pool.value
+    if (lastEventIds.value.length >= pool.value.length) {
+      lastEventIds.value = []
+    }
+    if (lastEventIds.value.length > 0) {
+      available = pool.value.filter(e => !lastEventIds.value.includes(e.id))
+    }
+    const idx = Math.floor(Math.random() * available.length)
+    const chosen = available[idx]
+    lastEventIds.value.push(chosen.id)
+    if (lastEventIds.value.length > MAX_HISTORY) {
+      lastEventIds.value.shift()
+    }
+    currentEvent.value = deepCloneEvent(chosen)
     return currentEvent.value
   }
 

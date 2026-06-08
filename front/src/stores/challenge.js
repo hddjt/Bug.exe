@@ -1,6 +1,7 @@
 import { ref, computed } from 'vue'
 import { defineStore } from 'pinia'
 import { usePlayerStore } from './player'
+import { saveWithVersion, loadWithVersion, removeStorage } from './helpers'
 
 const CHALLENGES = [
   { id: 'no-slack', name: '今日不摸鱼', desc: '不使用摸鱼和带薪拉屎模式累计 30 分钟', check: s => s.workTicks >= 1800, reward: 3 },
@@ -11,15 +12,25 @@ const CHALLENGES = [
   { id: 'social-butterfly', name: '社交达人', desc: '与所有同事各聊天一次', check: s => s.chatAll, reward: 1 },
 ]
 
+const TRACK_DISPATCH = {
+  work(s) { s.workDone++ },
+  bug(s) { s.bugsFixed++ },
+  tick(s) {
+    if (usePlayerStore().mode === 'work') s.workTicks++
+  },
+  money(s, val) { s.moneyEarned += val },
+  combo(s, val) { s.maxCombo = Math.max(s.maxCombo, val) },
+  chat(s) { s.chatAll = true },
+}
+
 export const useChallengeStore = defineStore('challenge', () => {
   const today = ref(new Date().toDateString())
   const completed = ref([])
   const stats = ref({ workTicks: 0, bugsFixed: 0, workDone: 0, moneyEarned: 0, maxCombo: 0, chatAll: false })
   const claimed = ref([])
+  const newlyCompleted = ref([])
 
-  const activeChallenges = computed(() => {
-    return CHALLENGES.filter(c => !completed.value.includes(c.id))
-  })
+  const activeChallenges = computed(() => CHALLENGES.filter(c => !completed.value.includes(c.id)))
 
   const progress = computed(() => {
     const total = CHALLENGES.length
@@ -34,27 +45,24 @@ export const useChallengeStore = defineStore('challenge', () => {
       completed.value = []
       stats.value = { workTicks: 0, bugsFixed: 0, workDone: 0, moneyEarned: 0, maxCombo: 0, chatAll: false }
       claimed.value = []
+      newlyCompleted.value = []
     }
   }
 
-  function track(type, value = 1) {
+  function track(type, value) {
     resetIfNewDay()
-    if (type === 'work') stats.value.workDone += value
-    if (type === 'bug') stats.value.bugsFixed += value
-    if (type === 'tick' && usePlayerStore().mode === 'work') stats.value.workTicks += value
-    if (type === 'money') stats.value.moneyEarned += value
-    if (type === 'combo') stats.value.maxCombo = Math.max(stats.value.maxCombo, value)
-    if (type === 'chat') {
-      stats.value.chatAll = true
-    }
-    check()
+    const handler = TRACK_DISPATCH[type]
+    if (handler) handler(stats.value, value)
+    _check()
   }
 
-  function check() {
+  function _check() {
+    newlyCompleted.value = []
     for (const c of CHALLENGES) {
       if (completed.value.includes(c.id)) continue
       if (c.check(stats.value)) {
         completed.value.push(c.id)
+        newlyCompleted.value.push(c)
       }
     }
   }
@@ -65,9 +73,9 @@ export const useChallengeStore = defineStore('challenge', () => {
 
   function claim(challengeId) {
     const c = CHALLENGES.find(x => x.id === challengeId)
-    if (!c || !canClaim(challengeId)) return false
+    if (!c || !canClaim(challengeId)) return 0
     const player = usePlayerStore()
-    player.skillPoints += c.reward
+    player.earnSkillPoints(c.reward)
     claimed.value.push(challengeId)
     return c.reward
   }
@@ -75,23 +83,20 @@ export const useChallengeStore = defineStore('challenge', () => {
   const SAVE_KEY = 'bug-exe-challenges'
 
   function save() {
-    localStorage.setItem(SAVE_KEY, JSON.stringify({
+    return saveWithVersion(SAVE_KEY, {
       today: today.value, completed: completed.value,
       stats: stats.value, claimed: claimed.value,
-    }))
+    })
   }
 
   function load() {
-    const raw = localStorage.getItem(SAVE_KEY)
-    if (!raw) return
-    try {
-      const data = JSON.parse(raw)
-      today.value = data.today ?? new Date().toDateString()
-      completed.value = data.completed ?? []
-      stats.value = data.stats ?? { workTicks: 0, bugsFixed: 0, workDone: 0, moneyEarned: 0, maxCombo: 0, chatAll: false }
-      claimed.value = data.claimed ?? []
-      resetIfNewDay()
-    } catch { /* ignore */ }
+    const data = loadWithVersion(SAVE_KEY)
+    if (!data) return
+    today.value = data.today ?? new Date().toDateString()
+    completed.value = data.completed ?? []
+    stats.value = data.stats ?? { workTicks: 0, bugsFixed: 0, workDone: 0, moneyEarned: 0, maxCombo: 0, chatAll: false }
+    claimed.value = data.claimed ?? []
+    resetIfNewDay()
   }
 
   function reset() {
@@ -99,12 +104,14 @@ export const useChallengeStore = defineStore('challenge', () => {
     completed.value = []
     stats.value = { workTicks: 0, bugsFixed: 0, workDone: 0, moneyEarned: 0, maxCombo: 0, chatAll: false }
     claimed.value = []
-    localStorage.removeItem(SAVE_KEY)
+    newlyCompleted.value = []
+    removeStorage(SAVE_KEY)
   }
 
   return {
-    today, completed, stats, claimed, activeChallenges, progress,
-    resetIfNewDay, track, check, canClaim, claim,
+    today, completed, stats, claimed, newlyCompleted,
+    activeChallenges, progress,
+    resetIfNewDay, track, canClaim, claim,
     save, load, reset,
   }
 })
